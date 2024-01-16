@@ -38,6 +38,15 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+#define CONTROL_CYCLE 1 //milli sec
+
+#define ENC_POLARITY0 0
+#define ENC_POLARITY1 0
+
+#define MOTOR_POLARITY0 0
+#define MOTOR_POLARITY1 0
+
+#define PRINT 0
 
 /* USER CODE END PM */
 
@@ -51,6 +60,12 @@ TIM_HandleTypeDef htim6;
 
 /* USER CODE BEGIN PV */
 
+PID motor_vel_pid[2];
+double kp[2] = {1, 1};
+float kd[2] = {0.1, 0.1};
+float ki[2] = {0.01, 0.01};
+double setpoint[2] = {0, 0};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,11 +77,60 @@ static void MX_TIM4_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_LPUART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+int16_t read_encoder_value(TIM_TypeDef *TIM);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+
+	if(htim == &htim6){
+		float vel[2] = {};
+
+#if ENC_POLALITY0 == 0
+		vel[0] = read_encoder_value(TIM3)/CONTROL_CYCLE;
+#else
+		vel[0] = -1*read_encoder_value(TIM3)/CONTROL_CYCLE;
+#endif
+
+#if ENC_POLARITY1 == 0
+		vel[1] = read_encoder_value(TIM4)/CONTROL_CYCLE;
+#else
+		vel[1] = -1*read_encoder_value(TIM4)/CONTROL_CYCLE;
+#endif
+
+		int output[2];
+		int duty[2];
+
+		for(uint8_t i=0; i<2; i++){
+			output[i] = pid_compute(&motor_vel_pid[i], vel[i]);
+			duty[i] = duty[i]>htim1.Init.Period ? htim1.Init.Period : duty[i];
+		}
+
+
+		__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, duty[0]);
+		__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, duty[1]);
+
+#if PRINT == 0
+		static uint8_t index = 0;
+		if(index == 50){
+			printf("velocity :%f, output:%d/r/n", vel[0], output[0]);
+			index=0;
+		}
+		index++;
+#endif
+	}
+
+}
+
+
+int16_t read_encoder_value(TIM_TypeDef *TIM){
+	  uint16_t enc_buff = TIM->CNT;
+	  TIM->CNT = 0;
+	  return (int16_t)enc_buff;
+}
+
 int _write(int file, char *ptr, int len)
 {
     HAL_UART_Transmit(&hlpuart1,(uint8_t *)ptr,len,10);
@@ -111,6 +175,15 @@ int main(void)
   /* USER CODE BEGIN 2 */
   printf("Initialized\r\n");
   HAL_TIM_Base_Start_IT(&htim6);
+
+	HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+	HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+
+	for(uint8_t i=0; i<2; i++){
+		pid_init(&motor_vel_pid[i], CONTROL_CYCLE, kp[i],  kd[i], ki[i], setpoint[i]);
+	}
   /* USER CODE END 2 */
 
   /* Infinite loop */
