@@ -115,7 +115,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 #if PRINT == 0
 		static uint8_t index = 0;
 		if(index == 50){
-			printf("velocity :%f, output:%d/r/n", vel[0], output[0]);
+			printf("velocity :%f, output:%d\r\n", vel[0], output[0]);
 			index=0;
 		}
 		index++;
