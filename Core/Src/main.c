@@ -43,9 +43,6 @@
 #define ENC_POLARITY0 0
 #define ENC_POLARITY1 0
 
-#define MOTOR_POLARITY0 0
-#define MOTOR_POLARITY1 0
-
 #define PRINT 0
 
 /* USER CODE END PM */
@@ -64,7 +61,7 @@ PID motor_vel_pid[2];
 double kp[2] = {1, 1};
 float kd[2] = {0.1, 0.1};
 float ki[2] = {0.01, 0.01};
-double setpoint[2] = {0, 0};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数
+double setpoint[2] = {0, 0};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数/msec
 
 /* USER CODE END PV */
 
@@ -105,7 +102,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 		for(uint8_t i=0; i<2; i++){
 			output[i] = pid_compute(&motor_vel_pid[i], vel[i]);
+			//duty比が0で出力100%になるようになっているらしいので，数値を反転&PWM max or minを超えているときにmax or minに合わせて出力
 			duty[i] = duty[i]>htim1.Init.Period ? htim1.Init.Period : duty[i];
+			duty[i] = duty[i]<0                 ? 0                 : duty[i];
+			duty[i] = htim1.Init.Period - duty[i];
 		}
 
 
