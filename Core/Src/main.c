@@ -58,10 +58,10 @@ TIM_HandleTypeDef htim6;
 /* USER CODE BEGIN PV */
 
 PID motor_vel_pid[2];
-double kp[2] = {1, 1};
-float kd[2] = {0.1, 0.1};
+double kp[2] = {1.5, 1.5};
+float kd[2] = {0.5, 0.5};
 float ki[2] = {0.01, 0.01};
-double setpoint[2] = {0, 0};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数/msec
+double setpoint[2] = {250, 250};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数/msec
 
 /* USER CODE END PV */
 
@@ -101,7 +101,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		int duty[2];
 
 		for(uint8_t i=0; i<2; i++){
-			output[i] = pid_compute(&motor_vel_pid[i], vel[i]);
+			duty[i] = pid_compute(&motor_vel_pid[i], vel[i]);
 			//duty比が0で出力100%になるようになっているらしいので，数値を反転&PWM max or minを超えているときにmax or minに合わせて出力
 			duty[i] = duty[i]>htim1.Init.Period ? htim1.Init.Period : duty[i];
 			duty[i] = duty[i]<0                 ? 0                 : duty[i];
@@ -115,7 +115,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 #if PRINT == 0
 		static uint8_t index = 0;
 		if(index == 50){
-			printf("velocity :%f, output:%d\r\n", vel[0], output[0]);
+			printf("velocity :%f, duty:%d\r\n", vel[0], duty[0]);
 			index=0;
 		}
 		index++;
