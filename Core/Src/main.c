@@ -105,6 +105,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 	setpoint[0] = received_num;
 	setpoint[1] = received_num;
+
+	for(uint8_t i=0; i<2; i++){
+		pid_init(&motor_vel_pid[i], CONTROL_CYCLE, kp[i], kd[i], ki[i], setpoint[i]);
+	}
 	printf("%d\r\n", received_num);
 
     HAL_UART_Receive_IT(&hlpuart1, uart_buffer, 4);
