@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "pid.h"
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
 /* USER CODE END Includes */
 
@@ -61,7 +63,9 @@ PID motor_vel_pid[2];
 double kp[2] = {1.5, 1.5};
 float kd[2] = {0.5, 0.5};
 float ki[2] = {0.01, 0.01};
-double setpoint[2] = {250, 250};//ここ変えたら目標�?�が変わる．目標�?�はエンコー�?のパルス数/msec
+double setpoint[2] = {250, 250};//ここ変えたら目標�?�が変わる．目標�?�はエンコー�?のパルス数/msec
+
+uint8_t uart_buffer[4];
 
 /* USER CODE END PV */
 
@@ -79,6 +83,34 @@ int16_t read_encoder_value(TIM_TypeDef *TIM);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+  if (huart->Instance == LPUART1) {
+	  const int16_t MAXIMUM_VEL = 670/CONTROL_CYCLE;//[Pulse/ms]
+    int received_num = atoi(uart_buffer);
+
+    if(received_num < 0){
+    	printf("Speed must be positive\r\n");
+    	received_num = 0;
+    }
+    else if(received_num == 9999){
+    	for(uint8_t i=0; i<2; i++){
+    		pid_init(&motor_vel_pid[i], CONTROL_CYCLE, kp[i], kd[i], ki[i], 0);
+    	}
+    	printf("PID controller initialized\r\n");
+    }
+    if(received_num > MAXIMUM_VEL){
+    	printf("Too fast\r\n");
+		received_num = 0;
+    }
+
+	setpoint[0] = received_num;
+	setpoint[1] = received_num;
+	printf("%d\r\n", received_num);
+
+    HAL_UART_Receive_IT(&hlpuart1, uart_buffer, 4);
+  }
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 
@@ -102,7 +134,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 		for(uint8_t i=0; i<2; i++){
 			duty[i] = pid_compute(&motor_vel_pid[i], vel[i]);
-			//duty比が0で出�?100%になるよ�?になって�?るらしいので?��数値を反転&PWM max or minを�?えて�?るときにmax or minに合わせて出�?
+			//duty比が0で出�?100%になるよ�?になって�?るらしいので?��数値を反転&PWM max or minを�?えて�?るときにmax or minに合わせて出�?
 			duty[i] = duty[i]>htim1.Init.Period ? htim1.Init.Period : duty[i];
 			duty[i] = duty[i]<0                 ? 0                 : duty[i];
 			duty[i] = htim1.Init.Period - duty[i];
@@ -115,7 +147,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 #if PRINT == 0
 		static uint8_t index = 0;
 		if(index == 50){
-			printf("velocity :%f, duty:%d\r\n", vel[0], duty[0]);
+			printf("setpoint :%f, velocity :%f, duty:%d\r\n", setpoint[0], vel[0], duty[0]);
 			index=0;
 		}
 		index++;
@@ -174,6 +206,7 @@ int main(void)
   MX_LPUART1_UART_Init();
   /* USER CODE BEGIN 2 */
   printf("Initialized\r\n");
+  HAL_UART_Receive_IT(&hlpuart1, uart_buffer, 4);
   HAL_TIM_Base_Start_IT(&htim6);
 
 	HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
