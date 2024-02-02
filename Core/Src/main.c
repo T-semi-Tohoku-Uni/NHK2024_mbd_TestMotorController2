@@ -63,7 +63,7 @@ PID motor_vel_pid[2];
 double kp[2] = {1.5, 1.5};
 float kd[2] = {0.5, 0.5};
 float ki[2] = {0.01, 0.01};
-double setpoint[2] = {250, 250};//ここ変えたら目標�?�が変わる．目標�?�はエンコー�?のパルス数/msec
+double setpoint[2] = {250, 250};//ここ変えたら目標�??��が変わる．目標�??��はエンコー?��?のパルス数/msec
 
 uint8_t uart_buffer[4];
 
@@ -138,7 +138,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 		for(uint8_t i=0; i<2; i++){
 			duty[i] = pid_compute(&motor_vel_pid[i], vel[i]);
-			//duty比が0で出�?100%になるよ�?になって�?るらしいので?��数値を反転&PWM max or minを�?えて�?るときにmax or minに合わせて出�?
+			//duty比が0で出?��?100%になるよ?��?になって?��?るらしいので??��?��数値を反転&PWM max or minを�?えて?��?るときにmax or minに合わせて出?��?
 			duty[i] = duty[i]>htim1.Init.Period ? htim1.Init.Period : duty[i];
 			duty[i] = duty[i]<0                 ? 0                 : duty[i];
 			duty[i] = htim1.Init.Period - duty[i];
