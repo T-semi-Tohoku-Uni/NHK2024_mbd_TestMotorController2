@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "pid.h"
+#include "R1CANIDList.h"
 #include <stdio.h>
 
 /* USER CODE END Includes */
@@ -48,6 +49,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+FDCAN_HandleTypeDef hfdcan1;
+
 UART_HandleTypeDef hlpuart1;
 
 TIM_HandleTypeDef htim1;
@@ -63,6 +66,10 @@ float kd[2] = {0.5, 0.5};
 float ki[2] = {0.01, 0.01};
 double setpoint[2] = {250, 250};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数/msec
 
+// CAN settings
+FDCAN_TxHeaderTypeDef FDCAN1_TxHeader;
+FDCAN_RxHeaderTypeDef FDCAN1_RxHeader;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -73,12 +80,42 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_LPUART1_UART_Init(void);
+static void MX_FDCAN1_Init(void);
 /* USER CODE BEGIN PFP */
 int16_t read_encoder_value(TIM_TypeDef *TIM);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
+  uint8_t FDCAN1_RxData[1] = {0};
+
+  printf("FIFO0 callback\r\n");
+
+  // Error Handling
+  if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) == RESET) return;
+  if (hfdcan != &hfdcan1) return;
+
+  if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &FDCAN1_RxHeader, FDCAN1_RxData) != HAL_OK) {
+      Error_Handler();
+  }
+
+  printf("id = %d, data = %d\r\n", FDCAN1_RxHeader.Identifier, FDCAN1_RxData[0]);
+
+  switch(FDCAN1_RxHeader.Identifier) {
+    case CANID_SHOOT:
+      if (FDCAN1_RxData[0] == 0) { // motor running => stop
+          HAL_TIM_Base_Stop_IT(&htim6);
+      } else if (FDCAN1_RxData[0] == 1) { // motor stop => running
+          HAL_TIM_Base_Start_IT(&htim6);
+      }
+      break;
+    default:
+      break;
+  }
+
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 
@@ -120,8 +157,24 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		}
 		index++;
 #endif
-	}
 
+	  // For debug
+//		uint32_t vel_0 = (uint32_t)vel[0];
+//		uint32_t vel_1 = (uint32_t)vel[1];
+//
+//		uint8_t vels_for_debug[8];
+//
+//		vels_for_debug[0] = (value >> 24) & 0xFF; // 最上位バイト
+//		vels_for_debug[1] = (value >> 16) & 0xFF;
+//		vels_for_debug[2] = (value >> 8) & 0xFF;
+//		vels_for_debug[3] = value & 0xFF; // 最下位バイト
+//
+//	  FDCAN1_TxHeader.Identifier = CANID_SHOOT_FOR_DEBUG;
+//	  FDCAN1_TxHeader.DataLength = FDCAN_DLC_BYTES_4;
+//	    if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &FDCAN1_TxHeader, vels_for_debug) != HAL_OK) {
+//	        Error_Handler();
+//	    }
+	}
 }
 
 
@@ -133,7 +186,7 @@ int16_t read_encoder_value(TIM_TypeDef *TIM){
 
 int _write(int file, char *ptr, int len)
 {
-    HAL_UART_Transmit(&hlpuart1,(uint8_t *)ptr,len,10);
+    HAL_UART_Transmit(&hlpuart1,(uint8_t *)ptr,len,8);
     return len;
 }
 
@@ -172,9 +225,8 @@ int main(void)
   MX_TIM4_Init();
   MX_TIM6_Init();
   MX_LPUART1_UART_Init();
+  MX_FDCAN1_Init();
   /* USER CODE BEGIN 2 */
-  printf("Initialized\r\n");
-  HAL_TIM_Base_Start_IT(&htim6);
 
 	HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
@@ -184,6 +236,9 @@ int main(void)
 	for(uint8_t i=0; i<2; i++){
 		pid_init(&motor_vel_pid[i], CONTROL_CYCLE, kp[i],  kd[i], ki[i], setpoint[i]);
 	}
+
+	printf("Initialized\r\n");
+	HAL_TIM_Base_Start_IT(&htim6);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -241,6 +296,79 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief FDCAN1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_FDCAN1_Init(void)
+{
+
+  /* USER CODE BEGIN FDCAN1_Init 0 */
+
+  /* USER CODE END FDCAN1_Init 0 */
+
+  /* USER CODE BEGIN FDCAN1_Init 1 */
+
+  /* USER CODE END FDCAN1_Init 1 */
+  hfdcan1.Instance = FDCAN1;
+  hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
+  hfdcan1.Init.FrameFormat = FDCAN_FRAME_FD_BRS;
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.AutoRetransmission = DISABLE;
+  hfdcan1.Init.TransmitPause = DISABLE;
+  hfdcan1.Init.ProtocolException = DISABLE;
+  hfdcan1.Init.NominalPrescaler = 4;
+  hfdcan1.Init.NominalSyncJumpWidth = 1;
+  hfdcan1.Init.NominalTimeSeg1 = 15;
+  hfdcan1.Init.NominalTimeSeg2 = 4;
+  hfdcan1.Init.DataPrescaler = 2;
+  hfdcan1.Init.DataSyncJumpWidth = 1;
+  hfdcan1.Init.DataTimeSeg1 = 15;
+  hfdcan1.Init.DataTimeSeg2 = 4;
+  hfdcan1.Init.StdFiltersNbr = 1;
+  hfdcan1.Init.ExtFiltersNbr = 0;
+  hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
+  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN FDCAN1_Init 2 */
+//  FDCAN1_TxHeader.Identifier = 0x000;
+  FDCAN1_TxHeader.IdType = FDCAN_STANDARD_ID;
+  FDCAN1_TxHeader.TxFrameType = FDCAN_DATA_FRAME;
+  FDCAN1_TxHeader.DataLength = FDCAN_DLC_BYTES_1;
+  FDCAN1_TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+  FDCAN1_TxHeader.BitRateSwitch = FDCAN_BRS_ON;
+  FDCAN1_TxHeader.FDFormat = FDCAN_FD_CAN;
+  FDCAN1_TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+  FDCAN1_TxHeader.MessageMarker = 0;
+
+  FDCAN_FilterTypeDef FDCAN1_sFilterConfig;
+  FDCAN1_sFilterConfig.IdType = FDCAN_STANDARD_ID;
+  FDCAN1_sFilterConfig.FilterIndex = 0;
+  FDCAN1_sFilterConfig.FilterType = FDCAN_FILTER_RANGE;
+  FDCAN1_sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+  FDCAN1_sFilterConfig.FilterID1 = 0x00;
+  FDCAN1_sFilterConfig.FilterID2 = 0x7ff;
+
+  if (HAL_FDCAN_ConfigFilter(&hfdcan1, &FDCAN1_sFilterConfig) != HAL_OK) {
+      Error_Handler();
+  }
+  if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_REJECT, FDCAN_REJECT, FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE) !=
+      HAL_OK) {
+      Error_Handler();
+  }
+  if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK) {
+      Error_Handler();
+  }
+  if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0) != HAL_OK){
+      Error_Handler();
+  }
+  /* USER CODE END FDCAN1_Init 2 */
+
 }
 
 /**
