@@ -43,6 +43,8 @@
 
 #define PRINT 0
 
+#define MIN_DUTY 1000
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -58,10 +60,10 @@ TIM_HandleTypeDef htim6;
 /* USER CODE BEGIN PV */
 
 PID motor_vel_pid[2];
-double kp[2] = {1.5, 1.5};
-float kd[2] = {0.5, 0.5};
+double kp[2] = {10, 5};
+float kd[2] = {0, 0};
 float ki[2] = {0, 0};
-double setpoint[2] = {250, 250};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数/msec
+double setpoint[2] = {100, 250};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数/msec
 
 // CAN settings
 FDCAN_TxHeaderTypeDef FDCAN1_TxHeader;
@@ -79,7 +81,7 @@ static void MX_TIM6_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_FDCAN1_Init(void);
 /* USER CODE BEGIN PFP */
-int16_t read_encoder_value(TIM_TypeDef *TIM);
+int read_encoder_value(TIM_TypeDef *TIM);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -138,8 +140,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			duty[i] = duty[i]>htim1.Init.Period ? htim1.Init.Period : duty[i];
 			duty[i] = duty[i]<0                 ? 0                 : duty[i];
 			duty[i] = htim1.Init.Period - duty[i];
-		}
 
+			if (MIN_DUTY > duty[i]) { // For safty
+			    duty[i] = MIN_DUTY;
+			}
+		}
 
 		__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, duty[0]);
 		__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, duty[1]);
@@ -147,7 +152,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 #if PRINT == 0
 		static uint8_t index = 0;
 		if(index == 50){
-			printf("velocity :%f, duty:%d\r\n", vel[0], duty[0]);
+//			printf("velocity :%f, duty:%d\r\n", vel[0], duty[0]);
+		  printf("%f, %f, %f, %f\r\n", 0, vel[0], motor_vel_pid[0].last_error, 100);
 			index=0;
 		}
 		index++;
@@ -173,7 +179,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 
-int16_t read_encoder_value(TIM_TypeDef *TIM){
+int read_encoder_value(TIM_TypeDef *TIM){
     uint32_t enc_buff = TIM->CNT;
 
 	  TIM->CNT = 0;
@@ -234,7 +240,7 @@ int main(void)
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 
 	for(uint8_t i=0; i<2; i++){
-		pid_init(&motor_vel_pid[i], CONTROL_CYCLE, kp[i],  kd[i], ki[i], setpoint[i], 0, 500);
+		pid_init(&motor_vel_pid[i], CONTROL_CYCLE, kp[i],  kd[i], ki[i], setpoint[i], 0, 250);
 	}
 
 	printf("Initialized\r\n");
