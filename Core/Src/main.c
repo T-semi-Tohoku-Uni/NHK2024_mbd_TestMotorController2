@@ -41,9 +41,6 @@
 /* USER CODE BEGIN PM */
 #define CONTROL_CYCLE 1 //milli sec
 
-#define ENC_POLARITY0 0
-#define ENC_POLARITY1 0
-
 #define PRINT 0
 
 /* USER CODE END PM */
@@ -63,7 +60,7 @@ TIM_HandleTypeDef htim6;
 PID motor_vel_pid[2];
 double kp[2] = {1.5, 1.5};
 float kd[2] = {0.5, 0.5};
-float ki[2] = {0.01, 0.01};
+float ki[2] = {0, 0};
 double setpoint[2] = {250, 250};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数/msec
 
 // CAN settings
@@ -88,7 +85,7 @@ int16_t read_encoder_value(TIM_TypeDef *TIM);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
-  uint8_t FDCAN1_RxData[1] = {0};
+  uint8_t FDCAN1_RxData[4] = {0};
 
   printf("FIFO0 callback\r\n");
 
@@ -110,6 +107,13 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
           HAL_TIM_Base_Start_IT(&htim6);
       }
       break;
+    case CANID_CHANGE_SHOOT_SETPOINT:
+      // reset setpoint
+      int new_setpoint;
+      new_setpoint = (FDCAN1_RxData[0] << 24) | (FDCAN1_RxData[1] << 16) | (FDCAN1_RxData[2] << 8) | FDCAN1_RxData[3];
+      pid_reset_setpoint(&motor_vel_pid[0], new_setpoint);
+      pid_reset_setpoint(&motor_vel_pid[1], new_setpoint);
+      break;
     default:
       break;
   }
@@ -122,17 +126,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	if(htim == &htim6){
 		float vel[2] = {};
 
-#if ENC_POLALITY0 == 0
 		vel[0] = read_encoder_value(TIM3)/CONTROL_CYCLE;
-#else
-		vel[0] = -1*read_encoder_value(TIM3)/CONTROL_CYCLE;
-#endif
-
-#if ENC_POLARITY1 == 0
 		vel[1] = read_encoder_value(TIM4)/CONTROL_CYCLE;
-#else
-		vel[1] = -1*read_encoder_value(TIM4)/CONTROL_CYCLE;
-#endif
 
 		int output[2];
 		int duty[2];
@@ -179,9 +174,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 
 int16_t read_encoder_value(TIM_TypeDef *TIM){
-	  uint16_t enc_buff = TIM->CNT;
+    uint32_t enc_buff = TIM->CNT;
+
 	  TIM->CNT = 0;
-	  return (int16_t)enc_buff;
+
+	  uint32_t f_distance = enc_buff;
+	  uint32_t b_distance = (65535 - enc_buff);
+
+	  return (f_distance < b_distance) ? (int)(f_distance) : (int)(b_distance);
 }
 
 int _write(int file, char *ptr, int len)
@@ -234,7 +234,7 @@ int main(void)
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 
 	for(uint8_t i=0; i<2; i++){
-		pid_init(&motor_vel_pid[i], CONTROL_CYCLE, kp[i],  kd[i], ki[i], setpoint[i]);
+		pid_init(&motor_vel_pid[i], CONTROL_CYCLE, kp[i],  kd[i], ki[i], setpoint[i], 0, 500);
 	}
 
 	printf("Initialized\r\n");
