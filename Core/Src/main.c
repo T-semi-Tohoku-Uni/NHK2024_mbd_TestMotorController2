@@ -43,7 +43,7 @@
 
 #define PRINT 0
 
-#define MIN_DUTY 1000
+#define MIN_DUTY 1500
 
 /* USER CODE END PM */
 
@@ -60,10 +60,10 @@ TIM_HandleTypeDef htim6;
 /* USER CODE BEGIN PV */
 
 PID motor_vel_pid[2];
-double kp[2] = {10, 5};
+double kp[2] = {5, 5};
 float kd[2] = {0, 0};
 float ki[2] = {0, 0};
-double setpoint[2] = {100, 250};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数/msec
+double setpoint[2] = {700, 700};//ここ変えたら目標値が変わる．目標値はエンコーダのパルス数/msec
 
 // CAN settings
 FDCAN_TxHeaderTypeDef FDCAN1_TxHeader;
@@ -87,9 +87,9 @@ int read_encoder_value(TIM_TypeDef *TIM);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
-  uint8_t FDCAN1_RxData[4] = {0};
+  uint8_t FDCAN1_RxData[2] = {0};
 
-  printf("FIFO0 callback\r\n");
+//  printf("FIFO0 callback\r\n");
 
   // Error Handling
   if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) == RESET) return;
@@ -99,20 +99,27 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
       Error_Handler();
   }
 
-  printf("id = %d, data = %d\r\n", FDCAN1_RxHeader.Identifier, FDCAN1_RxData[0]);
+//  printf("id = %d, data = %d\r\n", FDCAN1_RxHeader.Identifier, FDCAN1_RxData[0]);
 
   switch(FDCAN1_RxHeader.Identifier) {
-    case CANID_SHOOT:
+    case CANID_BALL_MOTOR_ON:
       if (FDCAN1_RxData[0] == 0) { // motor running => stop
+          printf("stop\r\n");
+          HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+          HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
           HAL_TIM_Base_Stop_IT(&htim6);
       } else if (FDCAN1_RxData[0] == 1) { // motor stop => running
+          printf("start\r\n");
+          HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+          HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
           HAL_TIM_Base_Start_IT(&htim6);
       }
       break;
     case CANID_CHANGE_SHOOT_SETPOINT:
       // reset setpoint
       int new_setpoint;
-      new_setpoint = (FDCAN1_RxData[0] << 24) | (FDCAN1_RxData[1] << 16) | (FDCAN1_RxData[2] << 8) | FDCAN1_RxData[3];
+      new_setpoint = (FDCAN1_RxData[1] << 8) | FDCAN1_RxData[0];
+      printf("new_setpint is %d\r\n", new_setpoint);
       pid_reset_setpoint(&motor_vel_pid[0], new_setpoint);
       pid_reset_setpoint(&motor_vel_pid[1], new_setpoint);
       break;
@@ -131,19 +138,19 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		vel[0] = read_encoder_value(TIM3)/CONTROL_CYCLE;
 		vel[1] = read_encoder_value(TIM4)/CONTROL_CYCLE;
 
-		int output[2];
 		int duty[2];
 
 		for(uint8_t i=0; i<2; i++){
-			duty[i] = pid_compute(&motor_vel_pid[i], vel[i]);
-			//duty比が0で出力100%になるようになっているらしいので，数値を反転&PWM max or minを超えているときにmax or minに合わせて出力
-			duty[i] = duty[i]>htim1.Init.Period ? htim1.Init.Period : duty[i];
-			duty[i] = duty[i]<0                 ? 0                 : duty[i];
-			duty[i] = htim1.Init.Period - duty[i];
-
-			if (MIN_DUTY > duty[i]) { // For safty
-			    duty[i] = MIN_DUTY;
-			}
+//			duty[i] = pid_compute(&motor_vel_pid[i], vel[i]);
+//			//duty比が0で出力100%になるようになっているらしいので，数値を反転&PWM max or minを超えているときにmax or minに合わせて出力
+//			duty[i] = duty[i]>htim1.Init.Period ? htim1.Init.Period : duty[i];
+//			duty[i] = duty[i]<0                 ? 0                 : duty[i];
+//			duty[i] = htim1.Init.Period - duty[i];
+//
+//			if (MIN_DUTY > duty[i]) { // For safty
+//			    duty[i] = MIN_DUTY;
+//			}
+		    duty[i] = 3100;
 		}
 
 		__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, duty[0]);
@@ -152,8 +159,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 #if PRINT == 0
 		static uint8_t index = 0;
 		if(index == 50){
-//			printf("velocity :%f, duty:%d\r\n", vel[0], duty[0]);
-		  printf("%f, %f, %f, %f\r\n", 0, vel[0], motor_vel_pid[0].last_error, 100);
+			printf("velocity :%f, duty:%d\r\n", vel[0], duty[0]);
+//		  printf("%f, %f, %f, %f\r\n", 0, vel[0], motor_vel_pid[0].last_error, 100);
 			index=0;
 		}
 		index++;
@@ -243,8 +250,13 @@ int main(void)
 		pid_init(&motor_vel_pid[i], CONTROL_CYCLE, kp[i],  kd[i], ki[i], setpoint[i], 0, 250);
 	}
 
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+	HAL_TIM_Base_Stop_IT(&htim6);
+
 	printf("Initialized\r\n");
-	HAL_TIM_Base_Start_IT(&htim6);
+
+//  HAL_TIM_Base_Start_IT(&htim6);
   /* USER CODE END 2 */
 
   /* Infinite loop */
