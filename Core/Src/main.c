@@ -115,14 +115,6 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
           HAL_TIM_Base_Start_IT(&htim6);
       }
       break;
-    case CANID_CHANGE_SHOOT_SETPOINT:
-      // reset setpoint
-      int new_setpoint;
-      new_setpoint = (FDCAN1_RxData[1] << 8) | FDCAN1_RxData[0];
-      printf("new_setpint is %d\r\n", new_setpoint);
-      pid_reset_setpoint(&motor_vel_pid[0], new_setpoint);
-      pid_reset_setpoint(&motor_vel_pid[1], new_setpoint);
-      break;
     default:
       break;
   }
