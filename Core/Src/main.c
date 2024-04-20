@@ -50,6 +50,8 @@
 /* Private variables ---------------------------------------------------------*/
 FDCAN_HandleTypeDef hfdcan1;
 
+IWDG_HandleTypeDef hiwdg;
+
 UART_HandleTypeDef hlpuart1;
 
 TIM_HandleTypeDef htim1;
@@ -80,6 +82,7 @@ static void MX_TIM4_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_FDCAN1_Init(void);
+static void MX_IWDG_Init(void);
 /* USER CODE BEGIN PFP */
 int read_encoder_value(TIM_TypeDef *TIM);
 /* USER CODE END PFP */
@@ -115,6 +118,14 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
           HAL_TIM_Base_Start_IT(&htim6);
       }
       break;
+
+    case CANID_CHECK_IS_ACTIVE:
+      if (HAL_IWDG_Refresh(&hiwdg) != HAL_OK)
+      {
+        Error_Handler();
+      }
+      break;
+
     default:
       break;
   }
@@ -231,6 +242,7 @@ int main(void)
   MX_TIM6_Init();
   MX_LPUART1_UART_Init();
   MX_FDCAN1_Init();
+  MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
 
 	HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_ALL);
@@ -277,9 +289,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
@@ -377,6 +390,35 @@ static void MX_FDCAN1_Init(void)
       Error_Handler();
   }
   /* USER CODE END FDCAN1_Init 2 */
+
+}
+
+/**
+  * @brief IWDG Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_IWDG_Init(void)
+{
+
+  /* USER CODE BEGIN IWDG_Init 0 */
+
+  /* USER CODE END IWDG_Init 0 */
+
+  /* USER CODE BEGIN IWDG_Init 1 */
+
+  /* USER CODE END IWDG_Init 1 */
+  hiwdg.Instance = IWDG;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_32;
+  hiwdg.Init.Window = 999;
+  hiwdg.Init.Reload = 999;
+  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN IWDG_Init 2 */
+
+  /* USER CODE END IWDG_Init 2 */
 
 }
 
